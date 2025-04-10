@@ -4,20 +4,23 @@
     import Paddle from './Paddle.svelte';
     import Brick from './Brick.svelte';
 
+    const BALL_SPEED = 4; // 공 속도 상수로 고정
+
     let ball = {
         x: 400,
         y: 570,
-        dx: 4,
-        dy: -4,
+        dx: BALL_SPEED,
+        dy: -BALL_SPEED,
         radius: 10,
-        color: '#FF0000'
+        color: '#000000'
     };
 
     let paddle = {
         width: 75,
         height: 10,
         x: 362.5,
-        color: '#FFA500'
+        y: 580,
+        color: '#000000'
     };
 
     let bricks = [];
@@ -25,33 +28,73 @@
     let gameOver = false;
     let gameWin = false;
     let visibleBricks = [];
+    let level = 1;
+    let maxLevel = 50;
+    let paddleWidth = 75;
+    let gameLoopId = null; // 게임 루프 ID를 저장할 변수 추가
 
-    const BRICK_ROWS = 5;
-    const BRICK_COLS = 8;
-    const BRICK_WIDTH = 75;
+    const BRICK_ROWS = 6;
+    const BRICK_COLS = 10;
+    const BRICK_WIDTH = 70;
     const BRICK_HEIGHT = 20;
-    const BRICK_PADDING = 10;
+    const BRICK_PADDING = 5;
     const BRICK_OFFSET_TOP = 30;
-    const BRICK_OFFSET_LEFT = 30;
+    const BRICK_OFFSET_LEFT = 15;
 
-    onMount(() => {
+    const BRICK_COLORS = [
+        '#FF0000', // 빨강
+        '#FF7F00', // 주황
+        '#FFFF00', // 노랑
+        '#00FF00', // 초록
+        '#0000FF', // 파랑
+        '#4B0082'  // 남색
+    ];
+
+    function initializeLevel() {
+        // 레벨에 따른 난이도 조절
+        paddleWidth = Math.max(50, 75 - (level - 1) * 2);
+        
+        // 공 속도 초기화
+        ball.dx = BALL_SPEED;
+        ball.dy = -BALL_SPEED;
+        
+        paddle.width = paddleWidth;
+
         // 벽돌 초기화
+        bricks = [];
         for (let c = 0; c < BRICK_COLS; c++) {
             bricks[c] = [];
             for (let r = 0; r < BRICK_ROWS; r++) {
+                let status = 1;
+                if (level >= 5 && Math.random() < 0.1 + (level - 5) * 0.02) {
+                    status = 2;
+                }
+                if (level >= 10 && Math.random() < 0.05 + (level - 10) * 0.01) {
+                    status = 3;
+                }
+                
                 bricks[c][r] = { 
                     x: c * (BRICK_WIDTH + BRICK_PADDING) + BRICK_OFFSET_LEFT,
                     y: r * (BRICK_HEIGHT + BRICK_PADDING) + BRICK_OFFSET_TOP,
                     width: BRICK_WIDTH,
                     height: BRICK_HEIGHT,
-                    status: 1 
+                    status: status,
+                    color: status === 1 ? BRICK_COLORS[r % BRICK_COLORS.length] : 
+                           status === 2 ? '#FF0000' : '#000000'
                 };
             }
         }
         visibleBricks = bricks.flat().filter(brick => brick.status === 1);
+    }
 
-        // 게임 루프 시작
-        requestAnimationFrame(gameLoop);
+    onMount(() => {
+        initializeLevel();
+        gameLoopId = requestAnimationFrame(gameLoop);
+        return () => {
+            if (gameLoopId) {
+                cancelAnimationFrame(gameLoopId);
+            }
+        };
     });
 
     function gameLoop() {
@@ -80,32 +123,37 @@
             for (let r = 0; r < BRICK_ROWS; r++) {
                 const b = bricks[c][r];
                 if (b.status === 1) {
-                    // 공의 중심이 벽돌 내부에 있는지 확인
                     if (ball.x > b.x && ball.x < b.x + BRICK_WIDTH && 
                         ball.y > b.y && ball.y < b.y + BRICK_HEIGHT) {
-                        // 충돌 방향에 따라 공의 방향을 변경
-                        if (ball.dy > 0) {
-                            // 아래에서 충돌
-                            ball.dy = -ball.dy;
-                        } else {
-                            // 위에서 충돌
-                            ball.dy = -ball.dy;
-                        }
+                        ball.dy = -ball.dy;
                         b.status = 0;
                         score++;
-                        // visibleBricks 업데이트
                         visibleBricks = bricks.flat().filter(brick => brick.status === 1);
                         
-                        // 모든 벽돌이 깨졌는지 확인
                         if (visibleBricks.length === 0) {
-                            gameWin = true;
+                            if (level < maxLevel) {
+                                level++;
+                                gameWin = true;
+                                cancelAnimationFrame(gameLoopId); // 현재 게임 루프 취소
+                                setTimeout(() => {
+                                    gameWin = false;
+                                    initializeLevel();
+                                    ball.x = 400;
+                                    ball.y = 570;
+                                    ball.dx = BALL_SPEED;
+                                    ball.dy = -BALL_SPEED;
+                                    gameLoopId = requestAnimationFrame(gameLoop);
+                                }, 2000);
+                            } else {
+                                gameWin = true;
+                            }
                         }
                     }
                 }
             }
         }
 
-        requestAnimationFrame(gameLoop);
+        gameLoopId = requestAnimationFrame(gameLoop);
     }
 
     function handleMouseMove(e) {
@@ -114,30 +162,68 @@
             paddle.x = relativeX - paddle.width / 2;
         }
     }
+
+    function restartGame() {
+        if (gameLoopId) {
+            cancelAnimationFrame(gameLoopId);
+        }
+        level = 1;
+        score = 0;
+        gameOver = false;
+        gameWin = false;
+        initializeLevel();
+        ball.x = 400;
+        ball.y = 570;
+        ball.dx = BALL_SPEED;
+        ball.dy = -BALL_SPEED;
+        gameLoopId = requestAnimationFrame(gameLoop);
+    }
 </script>
 
 <div class="game-container">
-    <svg width="800" height="600" on:mousemove={handleMouseMove}>
-        <rect width="800" height="600" fill="#eee" />
-        
-        <!-- 벽돌 그리기 -->
-        {#each visibleBricks as brick}
-            <Brick {...brick} color="#800080" />
-        {/each}
-
-        <!-- 패들 그리기 -->
-        <Paddle x={paddle.x} y={590} width={paddle.width} height={paddle.height} color={paddle.color} />
-
-        <!-- 공 그리기 -->
-        <Ball x={ball.x} y={ball.y} radius={ball.radius} color={ball.color} />
-    </svg>
+    <div class="game-header">
+        <div class="game-title">벽돌깨기</div>
+        <div class="game-controls">
+            <button class="control-button" on:click={restartGame}>새 게임</button>
+            <div class="game-info">
+                <div class="score">점수: {score}</div>
+                <div class="level">레벨: {level}/{maxLevel}</div>
+            </div>
+        </div>
+    </div>
     
-    <div class="score">점수: {score}</div>
+    <div class="game-board">
+        <svg width="800" height="600" on:mousemove={handleMouseMove}>
+            <rect width="800" height="600" fill="#C0C0C0" />
+            
+            <!-- 벽돌 그리기 -->
+            {#each visibleBricks as brick}
+                <Brick {...brick} color={brick.color} />
+            {/each}
+
+            <!-- 패들 그리기 -->
+            <Paddle x={paddle.x} y={paddle.y} width={paddle.width} height={paddle.height} color={paddle.color} />
+
+            <!-- 공 그리기 -->
+            <Ball x={ball.x} y={ball.y} radius={ball.radius} color={ball.color} />
+        </svg>
+    </div>
+    
     {#if gameOver}
-        <div class="game-over">게임 오버!</div>
+        <div class="game-over">
+            <div class="message">Game Over!</div>
+            <button class="restart-button" on:click={restartGame}>Retry?</button>
+        </div>
     {/if}
     {#if gameWin}
-        <div class="game-win">승리!</div>
+        <div class="game-win">
+            {#if level === maxLevel}
+                <div class="message">Congratulations! You've cleared all levels!💃</div>
+            {:else}
+                <div class="message">Level {level-1} Clear!</div>
+                <div class="sub-message">Going to next level...</div>
+            {/if}
+        </div>
     {/if}
 </div>
 
@@ -146,34 +232,95 @@
         position: relative;
         width: 800px;
         margin: 0 auto;
+        background: #C0C0C0;
+        border: 2px solid #000;
+        box-shadow: 0 0 10px rgba(0, 0, 0, 0.3);
     }
 
-    svg {
-        display: block;
+    .game-header {
+        background: #C0C0C0;
+        padding: 10px;
+        border-bottom: 2px solid #000;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
     }
 
-    .score {
-        position: absolute;
-        top: 10px;
-        left: 10px;
-        font-size: 20px;
+    .game-title {
+        font-size: 24px;
+        font-weight: bold;
+        color: #000;
     }
 
-    .game-over {
+    .game-controls {
+        display: flex;
+        align-items: center;
+        gap: 20px;
+    }
+
+    .control-button {
+        padding: 5px 15px;
+        background: #C0C0C0;
+        border: 2px solid #000;
+        font-size: 14px;
+        cursor: pointer;
+    }
+
+    .control-button:hover {
+        background: #D0D0D0;
+    }
+
+    .game-board {
+        padding: 10px;
+    }
+
+    .score, .level {
+        font-size: 16px;
+        font-weight: bold;
+        color: #000;
+    }
+
+    .game-over, .game-win {
         position: absolute;
         top: 50%;
         left: 50%;
         transform: translate(-50%, -50%);
-        font-size: 40px;
-        color: red;
+        text-align: center;
+        background: rgba(192, 192, 192, 0.9);
+        padding: 20px;
+        border: 2px solid #000;
+        border-radius: 5px;
     }
 
-    .game-win {
-        position: absolute;
-        top: 50%;
-        left: 50%;
-        transform: translate(-50%, -50%);
-        font-size: 40px;
-        color: green;
+    .message {
+        font-size: 24px;
+        font-weight: bold;
+        margin-bottom: 10px;
+    }
+
+    .sub-message {
+        font-size: 16px;
+        margin-top: 10px;
+    }
+
+    .game-over .message {
+        color: #FF0000;
+    }
+
+    .game-win .message {
+        color: #0000FF;
+    }
+
+    .restart-button {
+        margin-top: 20px;
+        padding: 8px 16px;
+        background: #C0C0C0;
+        border: 2px solid #000;
+        font-size: 14px;
+        cursor: pointer;
+    }
+
+    .restart-button:hover {
+        background: #D0D0D0;
     }
 </style> 
